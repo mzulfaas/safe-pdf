@@ -19,24 +19,62 @@ export const PRESETS: Record<CompressionPreset, CompressionSettings> = {
   extreme: {
     scale: 1.0,
     quality: 0.55,
-    label: 'Kompresi Maksimal',
-    description: 'Ukuran file terkecil, ideal untuk batas upload email/portal (< 2MB).',
+    label: 'Extreme Compression',
+    description: 'Smallest file size. Ideal for strict upload limits and email attachments (< 2MB).',
     reductionEstimate: '~70% - 90%',
   },
   recommended: {
     scale: 1.35,
     quality: 0.72,
-    label: 'Direkomendasikan',
-    description: 'Keseimbangan terbaik antara keterbacaan teks dan penghematan ukuran.',
+    label: 'Recommended',
+    description: 'Optimal balance between crisp visual readability and significant size reduction.',
     reductionEstimate: '~50% - 75%',
   },
   low: {
     scale: 1.7,
     quality: 0.85,
-    label: 'Kualitas Tinggi',
-    description: 'Kualitas visual sangat tajam, kompresi ringan.',
+    label: 'High Quality',
+    description: 'Maximum visual sharpness and clarity with mild file size compression.',
     reductionEstimate: '~25% - 40%',
   },
+}
+
+export interface PdfMetadata {
+  totalPages: number
+  thumbnailUrl: string
+}
+
+export async function getPdfMetadata(file: File): Promise<PdfMetadata> {
+  const arrayBuffer = await file.arrayBuffer()
+  const loadingTask = pdfjsLib.getDocument({
+    data: new Uint8Array(arrayBuffer),
+  })
+  const sourcePdf = await loadingTask.promise
+  const totalPages = sourcePdf.numPages
+
+  let thumbnailUrl = ''
+  try {
+    const page = await sourcePdf.getPage(1)
+    const viewport = page.getViewport({ scale: 0.4 })
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    if (context) {
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+      await page.render({
+        canvasContext: context,
+        viewport,
+        canvas,
+      }).promise
+      thumbnailUrl = canvas.toDataURL('image/jpeg', 0.8)
+      canvas.width = 0
+      canvas.height = 0
+    }
+  } catch (e) {
+    console.warn('Could not generate PDF thumbnail', e)
+  }
+
+  return { totalPages, thumbnailUrl }
 }
 
 export interface CompressionProgress {
@@ -67,7 +105,7 @@ export async function compressPdf(
     currentPage: 0,
     totalPages: 1,
     percent: 5,
-    statusText: 'Membaca dokumen PDF di browser...',
+    statusText: 'Reading PDF document in browser...',
   })
 
   const arrayBuffer = await file.arrayBuffer()
@@ -84,7 +122,7 @@ export async function compressPdf(
       currentPage: pageNum,
       totalPages,
       percent: Math.round((pageNum / totalPages) * 85),
-      statusText: `Mengompres halaman ${pageNum} dari ${totalPages}...`,
+      statusText: `Compressing page ${pageNum} of ${totalPages}...`,
     })
 
     const page = await sourcePdf.getPage(pageNum)
@@ -94,7 +132,7 @@ export async function compressPdf(
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
     if (!context) {
-      throw new Error('Gagal membuat rendering canvas 2D di browser.')
+      throw new Error('Failed to create 2D canvas context in browser.')
     }
 
     canvas.width = viewport.width
@@ -132,7 +170,7 @@ export async function compressPdf(
     currentPage: totalPages,
     totalPages,
     percent: 95,
-    statusText: 'Menyusun berkas PDF akhir...',
+    statusText: 'Assembling final compressed PDF...',
   })
 
   const compressedPdfBytes = await targetPdf.save({ useObjectStreams: true })
@@ -149,7 +187,7 @@ export async function compressPdf(
     currentPage: totalPages,
     totalPages,
     percent: 100,
-    statusText: 'Selesai!',
+    statusText: 'Done!',
   })
 
   return {

@@ -12,25 +12,112 @@ import {
   CheckCircle2,
   Trash2,
   Zap,
-  HardDrive
+  HardDrive,
+  Globe,
+  Layers
 } from '@lucide/vue'
 import {
   compressPdf,
   formatBytes,
-  PRESETS,
+  getPdfMetadata,
   type CompressionPreset,
   type CompressionProgress,
-  type CompressionResult
+  type CompressionResult,
+  type PdfMetadata
 } from './services/pdfCompressor'
+
+// Language State (Default: English)
+type Language = 'en' | 'id'
+const locale = ref<Language>('en')
+
+function toggleLanguage() {
+  locale.value = locale.value === 'en' ? 'id' : 'en'
+}
 
 // State
 const selectedFile = ref<File | null>(null)
+const pdfMetadata = ref<PdfMetadata | null>(null)
 const selectedPreset = ref<CompressionPreset>('recommended')
 const isDragging = ref(false)
 const isCompressing = ref(false)
 const progress = ref<CompressionProgress | null>(null)
 const result = ref<CompressionResult | null>(null)
 const errorMessage = ref<string | null>(null)
+
+// Translations Dictionary
+const t = computed(() => {
+  if (locale.value === 'id') {
+    return {
+      tagline: '100% Client-Side • Tanpa Server',
+      subTagline: 'Tanpa Upload Server • Bebas & Privat',
+      heroTitlePrefix: 'Kompres Berkas PDF Secara',
+      heroTitleHighlight: 'Aman & Privat',
+      heroDesc: 'Semua proses kompresi berjalan langsung di memori browser Anda. Berkas Anda tidak pernah dikirim ke server mana pun, menjaga kerahasiaan dokumen penting Anda (KTP, CV, paspor, laporan keuangan).',
+      dropTitle: 'Tarik & Lepas berkas PDF Anda ke sini',
+      dropSubtitle: 'atau klik untuk memilih berkas dari perangkat Anda',
+      selectBtn: 'Pilih Berkas PDF',
+      privacyNote: 'Diproses lokal di perangkat Anda (Tanpa batas ukuran berkas)',
+      choosePreset: 'Pilih Tingkat Kompresi:',
+      startBtn: 'Mulai Kompresi Sekarang',
+      successTitle: 'Kompresi Berhasil!',
+      successDesc: 'Dokumen Anda telah dioptimalkan secara lokal tanpa menyentuh internet.',
+      originalSize: 'Ukuran Asli',
+      newSize: 'Ukuran Baru',
+      saved: 'Penghematan',
+      downloadBtn: 'Unduh PDF Hasil Kompresi',
+      compressAnother: 'Kompres Berkas Lain',
+      invalidPdf: 'Mohon unggah berkas berformat PDF yang valid.',
+      dontClose: 'Harap jangan menutup browser selama proses berlangsung.',
+      pages: 'halaman',
+      trust1Title: '100% Privat & Rahasia',
+      trust1Desc: 'Tidak ada backend, tidak ada database. Berkas PDF Anda tidak pernah diunggah atau disimpan di cloud.',
+      trust2Title: 'Gratis & Tanpa Batas',
+      trust2Desc: 'Kompres sebanyak yang Anda mau tanpa batasan kuota antrean harian atau paksaan berlangganan.',
+      trust3Title: 'Open Source di GitHub',
+      trust3Desc: 'Seluruh kode sumber bersifat publik dan dapat diaudit secara terbuka untuk membuktikan integritas keamanan.',
+      presets: {
+        extreme: { label: 'Kompresi Maksimal', desc: 'Ukuran file terkecil. Ideal untuk batas upload email/portal (< 2MB).', est: '~70% - 90%' },
+        recommended: { label: 'Direkomendasikan', desc: 'Keseimbangan terbaik antara keterbacaan teks dan penghematan ukuran.', est: '~50% - 75%' },
+        low: { label: 'Kualitas Tinggi', desc: 'Kualitas visual sangat tajam dengan kompresi ringan.', est: '~25% - 40%' }
+      }
+    }
+  }
+
+  return {
+    tagline: '100% Client-Side • Zero Server Uploads',
+    subTagline: 'Zero Server Uploads • Fast & Confidential',
+    heroTitlePrefix: 'Compress PDF Files',
+    heroTitleHighlight: 'Privately & Free',
+    heroDesc: 'All compression happens entirely inside your browser memory. Your files are never uploaded to any remote server, ensuring sensitive documents (CVs, passports, invoices) stay 100% confidential.',
+    dropTitle: 'Drop your PDF file here',
+    dropSubtitle: 'or click to browse from your device',
+    selectBtn: 'Choose PDF File',
+    privacyNote: 'Processed locally on your device (No file size limits)',
+    choosePreset: 'Select Compression Level:',
+    startBtn: 'Compress PDF Now',
+    successTitle: 'Compression Complete!',
+    successDesc: 'Your document was optimized locally without ever touching the cloud.',
+    originalSize: 'Original Size',
+    newSize: 'New Size',
+    saved: 'Saved',
+    downloadBtn: 'Download Compressed PDF',
+    compressAnother: 'Compress Another File',
+    invalidPdf: 'Please upload a valid PDF file.',
+    dontClose: 'Please keep this browser tab open during compression.',
+    pages: 'pages',
+    trust1Title: '100% Private & Confidential',
+    trust1Desc: 'Zero backend, zero tracking, zero database. Your documents never touch external servers or cloud storage.',
+    trust2Title: 'Free & Truly Unlimited',
+    trust2Desc: 'Compress as many documents as you need with zero hourly limits, queue delays, or subscription paywalls.',
+    trust3Title: 'Open Source on GitHub',
+    trust3Desc: 'Fully transparent and auditable codebase, showcasing modern Vue 3, TypeScript, and client-side WebAssembly.',
+    presets: {
+      extreme: { label: 'Extreme Compression', desc: 'Smallest file size. Ideal for strict upload limits and email attachments (< 2MB).', est: '~70% - 90%' },
+      recommended: { label: 'Recommended', desc: 'Optimal balance between crisp readability and substantial file reduction.', est: '~50% - 75%' },
+      low: { label: 'High Quality', desc: 'Maximum visual sharpness and clarity with mild file size compression.', est: '~25% - 40%' }
+    }
+  }
+})
 
 // Drag and drop handlers
 function onDragOver(e: DragEvent) {
@@ -59,20 +146,29 @@ function onFileInputChange(e: Event) {
   }
 }
 
-function handleFileSelect(file: File) {
+async function handleFileSelect(file: File) {
   errorMessage.value = null
   result.value = null
+  pdfMetadata.value = null
 
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-    errorMessage.value = 'Mohon unggah berkas dengan format PDF.'
+    errorMessage.value = t.value.invalidPdf
     return
   }
 
   selectedFile.value = file
+
+  try {
+    const meta = await getPdfMetadata(file)
+    pdfMetadata.value = meta
+  } catch (e) {
+    console.warn('Metadata inspection skipped:', e)
+  }
 }
 
 function removeSelectedFile() {
   selectedFile.value = null
+  pdfMetadata.value = null
   result.value = null
   errorMessage.value = null
   progress.value = null
@@ -85,9 +181,9 @@ async function startCompression() {
   errorMessage.value = null
   progress.value = {
     currentPage: 0,
-    totalPages: 1,
+    totalPages: pdfMetadata.value?.totalPages || 1,
     percent: 0,
-    statusText: 'Menyiapkan proses kompresi...'
+    statusText: locale.value === 'id' ? 'Menyiapkan proses kompresi...' : 'Preparing compression...'
   }
 
   try {
@@ -102,7 +198,7 @@ async function startCompression() {
   } catch (err: any) {
     console.error(err)
     errorMessage.value =
-      err?.message || 'Terjadi kesalahan saat memproses berkas PDF. Pastikan file tidak terenkripsi/rusak.'
+      err?.message || (locale.value === 'id' ? 'Terjadi kesalahan saat memproses berkas PDF.' : 'Error compressing PDF. Please ensure the file is not corrupted or password-protected.')
   } finally {
     isCompressing.value = false
   }
@@ -130,24 +226,38 @@ const formattedCompressedSize = computed(() => {
             <div class="flex items-center gap-2">
               <span class="text-xl font-bold tracking-tight text-slate-900">SafePDF</span>
               <span class="text-[11px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                <ShieldCheck class="w-3 h-3" /> 100% Client-Side
+                <ShieldCheck class="w-3 h-3" /> {{ t.tagline }}
               </span>
             </div>
-            <p class="text-xs text-slate-500 hidden sm:block">Zero Server Uploads • Bebas & Privat</p>
+            <p class="text-xs text-slate-500 hidden sm:block">{{ t.subTagline }}</p>
           </div>
         </div>
 
-        <a
-          href="https://github.com/mzulfaas/safe-pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-emerald-600 bg-slate-100 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 px-3 py-1.5 rounded-lg transition-colors"
-        >
-          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-          </svg>
-          <span class="hidden sm:inline">Star on GitHub</span>
-        </a>
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- Language Switcher Toggle -->
+          <button
+            type="button"
+            @click="toggleLanguage"
+            class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 transition-colors cursor-pointer"
+            title="Switch Language"
+          >
+            <Globe class="w-3.5 h-3.5 text-slate-500" />
+            <span>{{ locale.toUpperCase() }}</span>
+          </button>
+
+          <!-- GitHub Star Link -->
+          <a
+            href="https://github.com/mzulfaas/safe-pdf"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-2 text-sm font-medium text-slate-700 hover:text-emerald-600 bg-slate-100 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+            </svg>
+            <span class="hidden sm:inline">Star on GitHub</span>
+          </a>
+        </div>
       </div>
     </header>
 
@@ -156,12 +266,10 @@ const formattedCompressedSize = computed(() => {
       <!-- Hero Header -->
       <div class="text-center max-w-2xl mb-8">
         <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight mb-3">
-          Kompres Berkas PDF Anda Secara <span class="text-emerald-600">Aman & Privat</span>
+          {{ t.heroTitlePrefix }} <span class="text-emerald-600">{{ t.heroTitleHighlight }}</span>
         </h1>
         <p class="text-slate-600 text-sm sm:text-base leading-relaxed">
-          Semua proses kompresi berjalan langsung di memori browser Anda. 
-          <span class="font-semibold text-slate-800">Berkas tidak pernah dikirim ke server mana pun</span>, 
-          sehingga dokumen sensitif (KTP, CV, laporan keuangan) tetap aman seutuhnya.
+          {{ t.heroDesc }}
         </p>
       </div>
 
@@ -175,7 +283,7 @@ const formattedCompressedSize = computed(() => {
         >
           <AlertCircle class="w-5 h-5 shrink-0 mt-0.5 text-red-500" />
           <div>
-            <p class="font-semibold">Perhatian</p>
+            <p class="font-semibold">{{ locale === 'id' ? 'Perhatian' : 'Attention' }}</p>
             <p>{{ errorMessage }}</p>
           </div>
         </div>
@@ -207,10 +315,10 @@ const formattedCompressedSize = computed(() => {
           </div>
 
           <h3 class="text-lg font-bold text-slate-800 mb-1">
-            Tarik & Lepas berkas PDF Anda ke sini
+            {{ t.dropTitle }}
           </h3>
           <p class="text-slate-500 text-sm mb-5">
-            atau klik untuk memilih berkas dari perangkat Anda
+            {{ t.dropSubtitle }}
           </p>
 
           <button 
@@ -218,38 +326,49 @@ const formattedCompressedSize = computed(() => {
             class="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm px-5 py-2.5 rounded-xl shadow-sm shadow-emerald-200 transition-colors"
           >
             <FileText class="w-4 h-4" />
-            Pilih Berkas PDF
+            {{ t.selectBtn }}
           </button>
 
           <p class="text-xs text-slate-400 mt-4 flex items-center gap-1.5">
             <Lock class="w-3.5 h-3.5 text-emerald-600" /> 
-            Diproses lokal di perangkat Anda (Tidak ada batas ukuran)
+            {{ t.privacyNote }}
           </p>
         </div>
 
         <!-- STATE 2: File Selected & Options -->
         <div v-else-if="selectedFile && !result" class="space-y-6">
-          <!-- File Details Card -->
+          <!-- File Details Card with Thumbnail -->
           <div class="flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-200">
             <div class="flex items-center gap-3.5 overflow-hidden">
-              <div class="w-12 h-12 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
-                <FileText class="w-6 h-6" />
+              <!-- Thumbnail Preview or Icon -->
+              <div class="w-12 h-16 rounded-lg bg-slate-200 border border-slate-300 overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
+                <img 
+                  v-if="pdfMetadata?.thumbnailUrl" 
+                  :src="pdfMetadata.thumbnailUrl" 
+                  alt="PDF Thumbnail" 
+                  class="w-full h-full object-cover"
+                />
+                <FileText v-else class="w-6 h-6 text-slate-500" />
               </div>
+
               <div class="overflow-hidden">
                 <h4 class="font-semibold text-slate-900 truncate text-sm sm:text-base">
                   {{ selectedFile.name }}
                 </h4>
-                <p class="text-xs text-slate-500">
-                  Ukuran Asli: <span class="font-medium text-slate-700">{{ formattedOriginalSize }}</span>
-                </p>
+                <div class="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                  <span class="font-medium text-slate-700">{{ formattedOriginalSize }}</span>
+                  <span v-if="pdfMetadata?.totalPages" class="flex items-center gap-1 text-slate-500">
+                    • <Layers class="w-3 h-3 text-slate-400" /> {{ pdfMetadata.totalPages }} {{ t.pages }}
+                  </span>
+                </div>
               </div>
             </div>
 
             <button 
               v-if="!isCompressing"
               @click="removeSelectedFile"
-              class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              title="Ganti berkas"
+              class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+              title="Remove file"
             >
               <Trash2 class="w-5 h-5" />
             </button>
@@ -258,16 +377,16 @@ const formattedCompressedSize = computed(() => {
           <!-- Compression Preset Selector -->
           <div v-if="!isCompressing">
             <label class="block text-sm font-bold text-slate-800 mb-3">
-              Pilih Tingkat Kompresi:
+              {{ t.choosePreset }}
             </label>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
-                v-for="(config, key) in PRESETS"
+                v-for="(config, key) in t.presets"
                 :key="key"
                 type="button"
                 @click="selectedPreset = key as CompressionPreset"
                 :class="[
-                  'text-left p-4 rounded-xl border-2 transition-all flex flex-col justify-between',
+                  'text-left p-4 rounded-xl border-2 transition-all flex flex-col justify-between cursor-pointer',
                   selectedPreset === key 
                     ? 'border-emerald-600 bg-emerald-50/50 shadow-sm' 
                     : 'border-slate-200 hover:border-slate-300 bg-white'
@@ -284,11 +403,11 @@ const formattedCompressedSize = computed(() => {
                           : 'bg-slate-100 text-slate-600'
                       ]"
                     >
-                      {{ config.reductionEstimate }}
+                      {{ config.est }}
                     </span>
                   </div>
                   <p class="text-xs text-slate-500 leading-relaxed">
-                    {{ config.description }}
+                    {{ config.desc }}
                   </p>
                 </div>
               </button>
@@ -300,7 +419,7 @@ const formattedCompressedSize = computed(() => {
             <div class="flex justify-between items-center text-sm font-semibold text-slate-700">
               <span class="flex items-center gap-2">
                 <RotateCcw class="w-4 h-4 animate-spin text-emerald-600" />
-                {{ progress?.statusText || 'Sedang memproses...' }}
+                {{ progress?.statusText || 'Processing...' }}
               </span>
               <span class="text-emerald-700">{{ progress?.percent || 0 }}%</span>
             </div>
@@ -314,7 +433,7 @@ const formattedCompressedSize = computed(() => {
             </div>
 
             <p class="text-center text-xs text-slate-400">
-              Harap jangan menutup browser selama proses berlangsung.
+              {{ t.dontClose }}
             </p>
           </div>
 
@@ -325,7 +444,7 @@ const formattedCompressedSize = computed(() => {
               class="w-full py-3.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base shadow-sm shadow-emerald-200 flex items-center justify-center gap-2 transition-all hover:shadow-md cursor-pointer"
             >
               <Sparkles class="w-5 h-5" />
-              Mulai Kompresi Sekarang
+              {{ t.startBtn }}
             </button>
           </div>
         </div>
@@ -338,31 +457,31 @@ const formattedCompressedSize = computed(() => {
 
           <div>
             <h3 class="text-2xl font-extrabold text-slate-900 mb-1">
-              Kompresi Berhasil!
+              {{ t.successTitle }}
             </h3>
             <p class="text-slate-500 text-sm">
-              Dokumen Anda telah dioptimalkan tanpa pernah menyentuh internet.
+              {{ t.successDesc }}
             </p>
           </div>
 
           <!-- Size Comparison Card -->
           <div class="grid grid-cols-3 gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200 max-w-lg mx-auto">
             <div class="p-2">
-              <span class="block text-xs text-slate-400 font-medium">Ukuran Asli</span>
+              <span class="block text-xs text-slate-400 font-medium">{{ t.originalSize }}</span>
               <span class="text-sm sm:text-base font-bold text-slate-600 line-through">
                 {{ formatBytes(result.originalSize) }}
               </span>
             </div>
 
             <div class="p-2 border-x border-slate-200">
-              <span class="block text-xs text-emerald-600 font-medium">Ukuran Baru</span>
+              <span class="block text-xs text-emerald-600 font-medium">{{ t.newSize }}</span>
               <span class="text-sm sm:text-base font-bold text-emerald-700">
                 {{ formattedCompressedSize }}
               </span>
             </div>
 
             <div class="p-2">
-              <span class="block text-xs text-slate-400 font-medium">Penghematan</span>
+              <span class="block text-xs text-slate-400 font-medium">{{ t.saved }}</span>
               <span class="text-sm sm:text-base font-bold text-emerald-600">
                 -{{ result.savedPercent }}%
               </span>
@@ -374,10 +493,10 @@ const formattedCompressedSize = computed(() => {
             <a
               :href="result.downloadUrl"
               :download="`compressed_${selectedFile?.name || 'document.pdf'}`"
-              class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base shadow-sm shadow-emerald-200 transition-all hover:shadow-md"
+              class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base shadow-sm shadow-emerald-200 transition-all hover:shadow-md cursor-pointer"
             >
               <Download class="w-5 h-5" />
-              Unduh PDF Hasil Kompresi
+              {{ t.downloadBtn }}
             </a>
 
             <button
@@ -385,7 +504,7 @@ const formattedCompressedSize = computed(() => {
               class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-sm transition-colors cursor-pointer"
             >
               <RotateCcw class="w-4 h-4" />
-              Kompres Berkas Lain
+              {{ t.compressAnother }}
             </button>
           </div>
         </div>
@@ -398,9 +517,9 @@ const formattedCompressedSize = computed(() => {
           <div class="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
             <ShieldCheck class="w-5 h-5" />
           </div>
-          <h4 class="font-bold text-slate-900 text-sm">Privasi 100% Terjaga</h4>
+          <h4 class="font-bold text-slate-900 text-sm">{{ t.trust1Title }}</h4>
           <p class="text-xs text-slate-500 leading-relaxed">
-            Tidak ada backend, tidak ada database. Berkas PDF Anda tidak pernah diunggah atau disimpan di cloud kami.
+            {{ t.trust1Desc }}
           </p>
         </div>
 
@@ -408,9 +527,9 @@ const formattedCompressedSize = computed(() => {
           <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
             <Zap class="w-5 h-5" />
           </div>
-          <h4 class="font-bold text-slate-900 text-sm">Gratis & Tanpa Batas</h4>
+          <h4 class="font-bold text-slate-900 text-sm">{{ t.trust2Title }}</h4>
           <p class="text-xs text-slate-500 leading-relaxed">
-            Kompres sebanyak yang Anda mau tanpa batasan kuota antrean atau paksaan berlangganan bulanan.
+            {{ t.trust2Desc }}
           </p>
         </div>
 
@@ -418,9 +537,9 @@ const formattedCompressedSize = computed(() => {
           <div class="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
             <HardDrive class="w-5 h-5" />
           </div>
-          <h4 class="font-bold text-slate-900 text-sm">Open Source di GitHub</h4>
+          <h4 class="font-bold text-slate-900 text-sm">{{ t.trust3Title }}</h4>
           <p class="text-xs text-slate-500 leading-relaxed">
-            Seluruh kode transparan dan dapat diaudit secara terbuka untuk membuktikan integritas keamanan sistem.
+            {{ t.trust3Desc }}
           </p>
         </div>
       </div>
@@ -430,10 +549,10 @@ const formattedCompressedSize = computed(() => {
     <footer class="border-t border-slate-200 bg-white py-6 mt-12 text-center text-xs text-slate-500">
       <div class="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <p>
-          © 2026 <strong>SafePDF</strong>. Dikembangkan secara open-source oleh <strong>Muhamad Zulfa Assyfa</strong>.
+          © 2026 <strong>SafePDF</strong>. Built with open-source spirit by <strong>Muhamad Zulfa Assyfa</strong>.
         </p>
         <p class="flex items-center gap-1">
-          Ditenagai oleh <span class="font-semibold text-emerald-600">Vue 3</span>, <span class="font-semibold text-blue-600">TypeScript</span> & <span class="font-semibold text-cyan-600">Tailwind CSS</span>
+          Powered by <span class="font-semibold text-emerald-600">Vue 3</span>, <span class="font-semibold text-blue-600">TypeScript</span> & <span class="font-semibold text-cyan-600">Tailwind CSS</span>
         </p>
       </div>
     </footer>
