@@ -14,7 +14,10 @@ import {
   Zap,
   HardDrive,
   Globe,
-  Layers
+  Layers,
+  ChevronDown,
+  HelpCircle,
+  Sliders
 } from '@lucide/vue'
 import {
   compressPdf,
@@ -44,7 +47,13 @@ const progress = ref<CompressionProgress | null>(null)
 const result = ref<CompressionResult | null>(null)
 const errorMessage = ref<string | null>(null)
 
-// Translations Dictionary
+// FAQ Accordion State
+const openFaqIndex = ref<number | null>(0)
+function toggleFaq(index: number) {
+  openFaqIndex.value = openFaqIndex.value === index ? null : index
+}
+
+// Translations & SEO Content
 const t = computed(() => {
   if (locale.value === 'id') {
     return {
@@ -75,6 +84,33 @@ const t = computed(() => {
       trust2Desc: 'Kompres sebanyak yang Anda mau tanpa batasan kuota antrean harian atau paksaan berlangganan.',
       trust3Title: 'Open Source di GitHub',
       trust3Desc: 'Seluruh kode sumber bersifat publik dan dapat diaudit secara terbuka untuk membuktikan integritas keamanan.',
+      howTitle: 'Cara Kompres PDF dalam 3 Langkah Mudah',
+      howSubtitle: 'Cepat, aman, dan tanpa perlu registrasi akun apa pun.',
+      steps: [
+        { title: '1. Masukkan Berkas PDF', desc: 'Tarik dan lepas atau pilih berkas PDF dari komputer/HP Anda.' },
+        { title: '2. Tentukan Tingkat Kompresi', desc: 'Pilih opsi Kompresi Maksimal, Direkomendasikan, atau Kualitas Tinggi.' },
+        { title: '3. Unduh Seketika', desc: 'Hasil kompresi selesai dalam hitungan detik dan siap Anda unduh langsung.' }
+      ],
+      faqTitle: 'Pertanyaan yang Sering Diajukan (FAQ)',
+      faqSubtitle: 'Semua yang perlu Anda ketahui tentang keamanan dan cara kerja SafePDF.',
+      faqs: [
+        {
+          q: 'Apakah berkas PDF saya diunggah ke server SafePDF?',
+          a: 'Sama sekali tidak! Berbeda dengan kompresor online biasa (seperti iLovePDF atau Smallpdf), SafePDF menggunakan teknologi client-side. Dokumen Anda dibaca dan dikompresi langsung oleh prosesor (CPU/RAM) perangkat Anda sendiri. Data tidak pernah meninggalkan browser Anda.'
+        },
+        {
+          q: 'Apakah ada batasan ukuran berkas atau kuota harian?',
+          a: 'Tidak ada batasan buatan. Anda bisa mengompresi dokumen sebesar apa pun dan sebanyak apa pun yang Anda inginkan tanpa antrean dan tanpa dipungut biaya.'
+        },
+        {
+          q: 'Apakah teks di dalam PDF tetap jelas setelah dikompresi?',
+          a: 'Ya. Pilihan "Direkomendasikan" dan "Kualitas Tinggi" mempertahankan ketajaman teks dengan sangat baik sambil memangkas ukuran gambar dan metadata berlebih.'
+        },
+        {
+          q: 'Bagaimana cara SafePDF bekerja secara teknis?',
+          a: 'SafePDF menggabungkan Vue 3, library PDF.js dari Mozilla, dan pdf-lib. Halaman PDF dianalisis dan dirender secara lokal menggunakan HTML5 Canvas, lalu disusun kembali menjadi berkas PDF baru yang ramping dan terkompresi.'
+        }
+      ],
       presets: {
         extreme: { label: 'Kompresi Maksimal', desc: 'Ukuran file terkecil. Ideal untuk batas upload email/portal (< 2MB).', est: '~70% - 90%' },
         recommended: { label: 'Direkomendasikan', desc: 'Keseimbangan terbaik antara keterbacaan teks dan penghematan ukuran.', est: '~50% - 75%' },
@@ -111,6 +147,33 @@ const t = computed(() => {
     trust2Desc: 'Compress as many documents as you need with zero hourly limits, queue delays, or subscription paywalls.',
     trust3Title: 'Open Source on GitHub',
     trust3Desc: 'Fully transparent and auditable codebase, showcasing modern Vue 3, TypeScript, and client-side WebAssembly.',
+    howTitle: 'How to Compress PDF in 3 Simple Steps',
+    howSubtitle: 'Fast, secure, and completely free with no signup required.',
+    steps: [
+      { title: '1. Select Your PDF', desc: 'Drag and drop or browse any PDF file directly from your computer or phone.' },
+      { title: '2. Choose Compression Level', desc: 'Pick from Extreme, Recommended, or High Quality based on your target file size.' },
+      { title: '3. Instant Local Download', desc: 'Your optimized PDF is generated in seconds and ready for immediate download.' }
+    ],
+    faqTitle: 'Frequently Asked Questions',
+    faqSubtitle: 'Everything you need to know about SafePDF privacy and performance.',
+    faqs: [
+      {
+        q: 'Are my PDF files uploaded to any remote servers?',
+        a: 'Never. Unlike traditional online tools that store your documents on third-party servers, SafePDF works 100% client-side. The file is processed directly inside your browser memory using your device’s CPU. No data is ever transmitted across the internet.'
+      },
+      {
+        q: 'Is there any file size limit or daily compression quota?',
+        a: 'No artificial limits! You can compress files of any size as many times as you like. Because processing uses your own device hardware, you will never encounter wait queues or paywalls.'
+      },
+      {
+        q: 'Will the compressed PDF retain legible text and formatting?',
+        a: 'Yes! The "Recommended" and "High Quality" presets are calibrated to maintain crisp typography and document readability while optimizing heavy embedded graphics and removing redundant metadata streams.'
+      },
+      {
+        q: 'How does client-side PDF compression work under the hood?',
+        a: 'SafePDF leverages Mozilla’s PDF.js rendering pipeline and pdf-lib. Document pages are inspected and rasterized locally onto offscreen HTML5 canvases, dynamically re-encoded at optimal quality ratios, and reassembled into a fresh, lightweight PDF.'
+      }
+    ],
     presets: {
       extreme: { label: 'Extreme Compression', desc: 'Smallest file size. Ideal for strict upload limits and email attachments (< 2MB).', est: '~70% - 90%' },
       recommended: { label: 'Recommended', desc: 'Optimal balance between crisp readability and substantial file reduction.', est: '~50% - 75%' },
@@ -376,7 +439,8 @@ const formattedCompressedSize = computed(() => {
 
           <!-- Compression Preset Selector -->
           <div v-if="!isCompressing">
-            <label class="block text-sm font-bold text-slate-800 mb-3">
+            <label class="block text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <Sliders class="w-4 h-4 text-emerald-600" />
               {{ t.choosePreset }}
             </label>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -543,10 +607,81 @@ const formattedCompressedSize = computed(() => {
           </p>
         </div>
       </div>
+
+      <!-- SEO SECTION 1: How It Works -->
+      <section class="w-full mt-16 pt-10 border-t border-slate-200">
+        <div class="text-center max-w-xl mx-auto mb-10">
+          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">
+            {{ t.howTitle }}
+          </h2>
+          <p class="text-slate-500 text-sm">
+            {{ t.howSubtitle }}
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div 
+            v-for="(step, idx) in t.steps" 
+            :key="idx" 
+            class="p-6 rounded-2xl bg-white border border-slate-200 shadow-xs relative"
+          >
+            <div class="w-8 h-8 rounded-full bg-emerald-600 text-white font-bold text-sm flex items-center justify-center mb-4">
+              {{ idx + 1 }}
+            </div>
+            <h3 class="font-bold text-slate-900 text-base mb-2">{{ step.title }}</h3>
+            <p class="text-slate-500 text-xs sm:text-sm leading-relaxed">{{ step.desc }}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- SEO SECTION 2: Frequently Asked Questions (FAQ) -->
+      <section class="w-full mt-16 pt-10 border-t border-slate-200">
+        <div class="text-center max-w-xl mx-auto mb-10">
+          <div class="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 mb-3">
+            <HelpCircle class="w-3.5 h-3.5" /> FAQ
+          </div>
+          <h2 class="text-2xl font-extrabold text-slate-900 tracking-tight mb-2">
+            {{ t.faqTitle }}
+          </h2>
+          <p class="text-slate-500 text-sm">
+            {{ t.faqSubtitle }}
+          </p>
+        </div>
+
+        <div class="max-w-2xl mx-auto space-y-3">
+          <div
+            v-for="(faq, idx) in t.faqs"
+            :key="idx"
+            class="rounded-xl border border-slate-200 bg-white overflow-hidden transition-all shadow-xs"
+          >
+            <button
+              type="button"
+              @click="toggleFaq(idx)"
+              class="w-full p-4 sm:p-5 text-left font-bold text-slate-900 text-sm sm:text-base flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/70 transition-colors"
+            >
+              <span>{{ faq.q }}</span>
+              <ChevronDown 
+                :class="[
+                  'w-5 h-5 text-slate-400 transition-transform duration-200 shrink-0',
+                  openFaqIndex === idx ? 'rotate-180 text-emerald-600' : ''
+                ]" 
+              />
+            </button>
+
+            <div
+              v-show="openFaqIndex === idx"
+              class="px-4 pb-5 sm:px-5 sm:pb-5 text-slate-600 text-xs sm:text-sm leading-relaxed border-t border-slate-100 pt-3"
+            >
+              {{ faq.a }}
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
 
     <!-- Footer -->
-    <footer class="border-t border-slate-200 bg-white py-6 mt-12 text-center text-xs text-slate-500">
+    <footer class="border-t border-slate-200 bg-white py-6 mt-16 text-center text-xs text-slate-500">
       <div class="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <p>
           © 2026 <strong>SafePDF</strong>. Built open-source by 
