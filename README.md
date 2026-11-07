@@ -41,7 +41,7 @@ Ensure you have [Node.js](https://nodejs.org/) installed (v18+ recommended).
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/safe-pdf.git
+git clone https://github.com/mzulfaas/safe-pdf.git
 
 # Enter project directory
 cd safe-pdf

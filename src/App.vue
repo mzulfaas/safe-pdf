@@ -549,7 +549,15 @@ const formattedCompressedSize = computed(() => {
     <footer class="border-t border-slate-200 bg-white py-6 mt-12 text-center text-xs text-slate-500">
       <div class="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
         <p>
-          © 2026 <strong>SafePDF</strong>. Built with open-source spirit by <strong>Muhamad Zulfa Assyfa</strong>.
+          © 2026 <strong>SafePDF</strong>. Built open-source by 
+          <a 
+            href="https://github.com/mzulfaas" 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            class="font-semibold text-slate-800 hover:text-emerald-600 underline underline-offset-2 transition-colors"
+          >
+            mzulfaas
+          </a>.
         </p>
         <p class="flex items-center gap-1">
           Powered by <span class="font-semibold text-emerald-600">Vue 3</span>, <span class="font-semibold text-blue-600">TypeScript</span> & <span class="font-semibold text-cyan-600">Tailwind CSS</span>
