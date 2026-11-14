@@ -12,12 +12,12 @@
 
 ---
 
-![SafePDF Hero Preview](https://raw.githubusercontent.com/mzulfaas/safe-pdf/main/public/hero-preview.png)
+## 🎬 Live Demo & Video Showcase
 
-## 🚀 Live Application
+![SafePDF Demo Showcase](https://raw.githubusercontent.com/mzulfaas/safe-pdf/main/public/demo.gif)
 
-Experience the zero-backend compression engine in action:  
-🔗 **[https://safepdf-app.vercel.app](https://safepdf-app.vercel.app)**
+> 📹 **High-Definition Video**: [safepdf_demo_showcase.mp4](safepdf_demo_showcase.mp4) (Watch raw 1080p recording in GitHub video player)  
+> 🔗 **Interactive Web App**: [https://safepdf-app.vercel.app](https://safepdf-app.vercel.app)
 
 ---
 
